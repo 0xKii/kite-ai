@@ -1,5 +1,7 @@
-## KITE AI BOT
+# KITE AI BOT
 
+## PREREQUISITIES
+Make sure Node.js is installed on your Linux system.
 
 ## FEATURES
 1. Support Multiaccount
@@ -7,11 +9,25 @@
 3. Auto Looping 24h
 
 ## INSTALLATION
-### 1. Clone the Reposity
-'git clone https://github.com/0xKii/kite-ai.git'
+1. Clone the Repository  
 
-### 2. Install The required Dependencies
-'npm install'
+   ```sh
+   git clone https://github.com/0xKii/kite-ai.git
+   cd kite-ai
 
-### 3. Run Bot
-'node index.js'
+
+2. Install The required Dependencies
+
+   ```sh
+   npm install
+
+
+3. Run Bot
+
+   ```sh
+   node index.js
+
+
+
+
+Thanks for: https://github.com/mamangzed
