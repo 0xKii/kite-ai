@@ -28,6 +28,4 @@ Make sure Node.js is installed on your Linux system.
    node index.js
 
 
-
-
 Thanks for: https://github.com/mamangzed
