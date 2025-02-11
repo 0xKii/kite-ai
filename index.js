@@ -8,7 +8,6 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { marked } from 'marked';
 import TerminalRenderer from 'marked-terminal';
-import HttpsProxyAgent from 'https-proxy-agent';
 
 marked.setOptions({
   renderer: new TerminalRenderer()
@@ -43,31 +42,44 @@ function displayAppTitle() {
   ));
 }
 
-function loadWalletsAndProxies() {
+// Membaca wallet dari file
+function loadWallets() {
   try {
-    const wallets = JSON.parse(fs.readFileSync('wallets.json', 'utf-8'));
-    const proxies = JSON.parse(fs.readFileSync('proxies.json', 'utf-8'));
-    return { wallets, proxies };
+    return JSON.parse(fs.readFileSync('wallets.json', 'utf-8'));
   } catch (error) {
-    console.error(chalk.red('⚠️ Gagal membaca file wallets.json atau proxies.json'), error.message);
+    console.error(chalk.red('⚠️ Gagal membaca wallets.json:'), error.message);
     process.exit(1);
   }
 }
 
-async function sendRandomQuestion(agent, proxy) {
+// Membaca proxy dari file (opsional)
+function loadProxies() {
+  try {
+    if (fs.existsSync('proxies.json')) {
+      const proxies = JSON.parse(fs.readFileSync('proxies.json', 'utf-8'));
+      return proxies.length > 0 ? proxies : null; // Gunakan proxy hanya jika ada
+    }
+  } catch (error) {
+    console.error(chalk.yellow('⚠️ Proxies.json ada tetapi gagal dibaca, menjalankan tanpa proxy...'));
+  }
+  return null; // Jika tidak ada proxies.json atau kosong
+}
+
+async function sendRandomQuestion(agent, proxy = null) {
   try {
     const randomQuestions = JSON.parse(fs.readFileSync('random_questions.json', 'utf-8'));
     const randomQuestion = randomQuestions[Math.floor(Math.random() * randomQuestions.length)];
     const payload = { message: randomQuestion, stream: false };
+    
     const url = `https://${agent.toLowerCase().replace('_', '-')}.stag-vxzy.zettablock.com/main`;
-    
-    const agentConfig = proxy ? { httpsAgent: new HttpsProxyAgent(`http://${proxy}`) } : {};
-    
-    const response = await axios.post(url, payload, {
+
+    // Konfigurasi request dengan atau tanpa proxy
+    const axiosConfig = {
       headers: { 'Content-Type': 'application/json' },
-      ...agentConfig
-    });
-    
+      ...(proxy && { proxy }) // Jika proxy tersedia, gunakan
+    };
+
+    const response = await axios.post(url, payload, axiosConfig);
     return { question: randomQuestion, response: response.data.choices[0].message };
   } catch (error) {
     console.error(chalk.red('⚠️ Error:'), error.response ? error.response.data : error.message);
@@ -75,7 +87,7 @@ async function sendRandomQuestion(agent, proxy) {
   }
 }
 
-async function reportUsage(wallet, options, proxy) {
+async function reportUsage(wallet, options) {
   try {
     const payload = {
       wallet_address: wallet,
@@ -85,12 +97,10 @@ async function reportUsage(wallet, options, proxy) {
       request_metadata: {}
     };
     
-    const agentConfig = proxy ? { httpsAgent: new HttpsProxyAgent(`http://${proxy}`) } : {};
-    
     await axios.post(
       `https://quests-usage-dev.prod.zettablock.com/api/report_usage`,
       payload,
-      { headers: { 'Content-Type': 'application/json' }, ...agentConfig }
+      { headers: { 'Content-Type': 'application/json' } }
     );
     console.log(chalk.green('✅ Data penggunaan berhasil dilaporkan!'));
   } catch (error) {
@@ -102,17 +112,15 @@ async function runMultiAccountProcess(wallets, proxies, iterations) {
   const agentId = Object.keys(agents)[0];
   const agentName = agents[agentId];
   
-  for (let i = 0; i < wallets.length; i++) {
-    const wallet = wallets[i];
-    const proxy = proxies[i] || null;
-    
+  for (const [index, wallet] of wallets.entries()) {
     console.log(chalk.blue(`\n📌 Memproses wallet: ${wallet}`));
     console.log(chalk.magenta(`🤖 Menggunakan Agent: ${agentName}`));
-    if (proxy) console.log(chalk.yellow(`🌐 Menggunakan Proxy: ${proxy}`));
     console.log(chalk.dim('----------------------------------------'));
 
-    for (let j = 0; j < iterations; j++) {
-      console.log(chalk.yellow(`🔄 Iterasi ke-${j + 1} untuk wallet ${wallet}`));
+    const proxy = proxies ? proxies[index % proxies.length] : null; // Pilih proxy secara bergiliran
+
+    for (let i = 0; i < iterations; i++) {
+      console.log(chalk.yellow(`🔄 Iterasi ke-${i + 1} untuk wallet ${wallet}`));
       const nanya = await sendRandomQuestion(agentId, proxy);
       if (nanya) {
         console.log(chalk.cyan('❓ Pertanyaan:'), chalk.bold(nanya.question));
@@ -121,7 +129,7 @@ async function runMultiAccountProcess(wallets, proxies, iterations) {
           agent_id: agentId,
           question: nanya.question,
           response: nanya?.response?.content ?? 'Tidak ada jawaban'
-        }, proxy);
+        });
       }
       console.log(chalk.gray('⏳ Menunggu 1 menit sebelum iterasi berikutnya...'));
       await sleep(60000);
@@ -133,8 +141,9 @@ async function runMultiAccountProcess(wallets, proxies, iterations) {
 async function main() {
   displayAppTitle();
   
-  const { wallets, proxies } = loadWalletsAndProxies();
-  const iterations = 2; // Ganti dengan jumlah iterasi yang diinginkan
+  const wallets = loadWallets();
+  const proxies = loadProxies(); // Bisa null jika tidak ada proxy
+  const iterations = 2; // Sesuaikan jumlah iterasi
   
   while (true) {
     console.log(chalk.magenta('\n=== Memulai sesi baru untuk semua akun ===\n'));
